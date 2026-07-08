@@ -1,0 +1,10 @@
+# Archivos compilados y ejecutables
+*.exe
+
+# Archivos de mapa y recursos generados
+*.map
+*.drc
+
+# Archivos de configuración de proyecto/usuario (comúnmente generados localmente en Delphi)
+*.cfg
+*.dof
