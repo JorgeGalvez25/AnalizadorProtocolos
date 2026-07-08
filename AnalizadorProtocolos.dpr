@@ -5,6 +5,9 @@ uses
   UAnalizadorBase in 'UAnalizadorBase.pas',
   UProtoBennett in 'UProtoBennett.pas',
   UProtoWayne2W in 'UProtoWayne2W.pas',
+  UProtoPam in 'UProtoPam.pas',
+  UProtoWayneCns in 'UProtoWayneCns.pas',
+  UProtoGilbarco in 'UProtoGilbarco.pas',
   UPrincipal in 'UPrincipal.pas' {frmPrincipal};
 
 {$R *.res}

@@ -19,7 +19,8 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls,
-  UAnalizadorBase, UProtoBennett, UProtoWayne2W;
+  UAnalizadorBase, UProtoBennett, UProtoWayne2W, UProtoPam, UProtoWayneCns,
+  UProtoGilbarco;
 
 type
   TTabProtocolo = record
@@ -176,7 +177,10 @@ begin
   // ============ REGISTRO DE MARCAS / PROTOCOLOS ============
   RegistraAnalizador(TAnalizadorBennett.Create);
   RegistraAnalizador(TAnalizadorWayne2W.Create);
-  // Marcas futuras: RegistraAnalizador(TAnalizadorGilbarco.Create); etc.
+  RegistraAnalizador(TAnalizadorPam.Create);
+  RegistraAnalizador(TAnalizadorWayneCns.Create);
+  RegistraAnalizador(TAnalizadorGilbarco.Create);
+  // Marcas futuras: RegistraAnalizador(TAnalizadorTeam.Create); etc.
   // =========================================================
 
   PageControl1.ActivePageIndex := 0;

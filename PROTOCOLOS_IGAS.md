@@ -5,7 +5,7 @@ de tramas seriales entre I-Gas (servicios `PDISPENSARIOS`) y las consolas de
 dispensarios de combustible. Generado a partir del análisis del código fuente
 Delphi de los drivers reales de I-Gas.
 
-- **Fuentes analizadas:** `UIGASBENNETT.pas`, `UIGASWAYNE2W.pas`
+- **Fuentes analizadas:** `UIGASBENNETT.pas`, `UIGASWAYNE2W.pas`, `UIGASPAM.pas`, `UIGASWAYNE.pas` (consola), `UIGASGILBARCO.pas`
 - **Herramienta:** aplicación **Delphi 7** (VCL pura, sin componentes de terceros)
 - **Propósito:** pegar tramas capturadas con un espía de puerto serial y obtener
   el desglose de cada parte del comando con un color distinto por parte, una
@@ -228,19 +228,276 @@ RX (elegir el contexto en la herramienta):
 
 ---
 
-## 4. Arquitectura de la herramienta (Delphi 7)
+## 4. Protocolo PAM 1000 (ASCII)
 
-### 4.1 Archivos del proyecto `AnalizadorProtocolos`
+### 4.1 Trama física
+
+```
+<STX> payload <ETX> BCC
+```
+
+| Elemento | Valor |
+|---|---|
+| STX | `#2` (02h) |
+| ETX | `#3` (03h) |
+| BCC | **XOR** encadenado de todos los bytes de `payload + ETX` — a diferencia de Bennett (suma + complemento) |
+| ACK / NAK | `#6` / `#21`, respuestas de un solo byte sin trama |
+
+La versión de consola se controla con la variable `VersionPam1000` (default
+`3`): cambia el setup (`D0…`), el preset (`P` vs `@02`) y los totales (`C` vs
+`@10`).
+
+### 4.2 Comandos TX (Consola I-Gas → PAM)
+
+Posición de carga siempre en **2 dígitos ASCII**.
+
+| Cmd | Formato | Función | Notas |
+|---|---|---|---|
+| `B` | `B00` | Poll de estatus de TODAS las posiciones | Cada ciclo del Timer1 |
+| `A` | `A` + pos(2) | Solicita lectura de venta de una posición | |
+| `T` | `T` + pos(2) + nivel(1) | Nivel de precios activo | `1`=cash (único usado). El PAM responde **ACK** (`swnivelprec`) |
+| `D` | `D0` + setup | Setup de la consola | Con v3 el default es `D06222` (`SetUpPAM1000`) |
+| `L` | `L` + pos(2) | OPEN PUMP | Abre una posición en estatus `6` (cerrada) |
+| `G` | `G` + pos(2) | RESTART | Reanuda posición detenida |
+| `E` | `E` + pos(2) | STOP / desautorizar | `E00` = **PARO TOTAL** |
+| `S` | `S` + pos(2) | Autorizar sin límite | I-Gas registra $999 como preset simbólico |
+| `R` | `R` + pos(2) | VENTA COMPLETA | Enviado por `FINV` con la posición en estatus 3 |
+| `X` | `X00` + comb(1) + nivel(1) + `00` + precio(4) | Cambio de precio (centavos) | Se envía 2 veces: nivel `1` (contado) y `2` (crédito) con el mismo precio |
+| `P` | importe: `P`+pos(2)+`0`+nivel+`000`+valor(5)+`0` · litros: `P`+pos(2)+`1`+nivel+`00`+valor(5)+`0`+grado | PRESET (versiones ≠ 3) | valor con 2 dec. implícitos (`FormatFloat 000.00`) |
+| `@02` | `@02`+`0`+pos(2)+tipo+nivel+valor(6)+prodauto(6) | PRESET v3 | tipo `0`=importe/`1`=litros; valor `FormatFloat 0000.00`; prodauto = 6 banderas `0/1` de productos autorizados |
+| `@10` | `@10`+`0`+pos(2) | Solicita totalizadores (v3) | |
+| `C` | `C`+pos(2)+comb(1)+`1` | Total de una pistola (versiones ≠ 3) | |
+
+### 4.3 Respuestas RX (PAM → Consola)
+
+| Resp | Layout (índices 1-based del payload) | Interpretación |
+|---|---|---|
+| `B00` + dígitos | **UN dígito de estatus por posición** desde [4] | Núm. de posiciones = len−3 |
+| `A` (cargando) | [2..3]=pos, [4]=`0`, [14..21]=importe parcial | [5..13] no leídos |
+| `A` (concluida) | [2..3]=pos, [4]=grado, [6..13]=volumen, [14..21]=importe, [22..26]=precio | [5] no leído |
+| `A` (sin mapa) | [4]=`\` | La posición perdió el mapeo; I-Gas lo reenvía |
+| `C` | [2..3]=pos, [4]=producto, [6..15]=total | ÷100 |
+| `@` (totales v3) | [5..6]=pos; grado/total en [8]/[9..18], [37]/[38..47], [66]/[67..76], [95]/[96..105] | total 10 dígitos ÷100; hasta 4 productos |
+| ACK/NAK | un byte | Aceptación / rechazo |
+
+**Divisores** (variables de `INITIALIZE`): `DigitosVolumen=2` → vol÷1000,
+`DigitosImporte=2` → importe÷1000, `DigitosPrecio=1` → precio÷100 (cada
+dígito n implica ÷10^(n+1)).
+
+**Estatus PAM** (dígito por posición): `0`=offline, `1`=idle, `2`=busy,
+`3`=fin de venta (EOT), `5`=llamando (call), `6`=**cerrada** (I-Gas envía
+`L..` para abrirla), `8`=detenida, `9`=autorizada.
+
+**Validaciones del driver dignas de nota:** si `2·vol·precio < importe`
+divide el importe entre 10; si `2·importe < vol·precio` lo multiplica por 10;
+con `AjustePAM=Si` recalcula `importe = vol·precio` cuando difieren ≥ $0.015.
+
+### 4.4 Ejemplos verificados (BCC XOR calculado con el algoritmo real)
+
+```
+B00                                        poll (TX sin envoltura en el combo)
+<STX>B0011253980<ETX><BCC=$44>             estatus de 8 posiciones
+<STX>A0220000255000054825002150<ETX><BCC=$78>  venta: 25.500L $548.25 @$21.50
+<STX>A010000000000000125500<ETX><BCC=$70>  cargando: importe parcial $125.50
+<STX>A03\<ETX><BCC=$1D>                    posición no mapeada
+T011 <BCC=$67>                             nivel de precios cash
+D06222 <BCC=$73>                           setup v3
+P0901000250750 <BCC=$6E>                   preset importe $250.75 pos 9
+P1011000500002 <BCC=$65>                   preset 50.00 L grado 2 pos 10
+@0201101040000100000 <BCC=$75>             preset v3 $400.00 producto 1
+@100120 <BCC=$41>                          solicita totales v3 pos 12
+<STX>@1001201000123456700000000000000000020000876543<ETX><BCC=$49>  totales v3
+C1221 <BCC=$40>                            solicita total pistola
+<STX>C12200001234567<ETX><BCC=$41>         total pistola 12,345.67 L
+X0011002050 <BCC=$5C>                      precio contado $20.50
+<STX>P0901000250750<ETX><BCC=$6F>          BCC INCORRECTO a propósito (real $6E)
+```
+
+---
+
+## 5. Protocolo WAYNE CONSOLA (ASCII)
+
+**No confundir con Wayne 2W** (§3, binario byte+complemento): este es el
+protocolo ASCII de la consola Wayne / Wayne Fusion (`UIGASWAYNE.pas`).
+
+### 5.1 Trama física
+
+Mismo empaque que PAM: `<STX> payload <ETX> BCC` con **BCC = XOR** de
+`payload + ETX`, ACK `#6` / NAK `#21`. Particularidad de la recepción: si el
+BCC recibido no coincide, **el driver convierte la trama en NAK** y la
+descarta.
+
+### 5.2 Comandos TX (Consola I-Gas → Wayne)
+
+| Cmd | Formato | Función | Notas |
+|---|---|---|---|
+| `B` | `B00` | Poll de estatus de TODAS las posiciones | Cada ciclo del Timer1 |
+| `A` | `A` + pos(2) + `00` | Solicita lectura de venta | |
+| `C` | `C` + pos(2) + prod(1) + `0` | Solicita totalizador de un producto | |
+| `N` | `N` + maxpos(2) + modo(1) | Inicialización | modo = `ModoPrecioWayne` (def. `1`). Solo con `WayneFusion=No` o `MapeoFusion=Si` |
+| `l` | `l1` | Enlace/handshake | La respuesta `l1` arranca el Timer del ciclo |
+| `h` | `h` + pos(2) + `00` | Desenllave paso 1 | Refresco de enllavados de posición inactiva |
+| `k` | `k` + pos(2) + `00` | Desenllave paso 2 | Sigue a `h..00` |
+| `g` | `g` + pos(2) + mapa | Mapeo de productos | Un dígito de combustible por grado, relleno con `0` hasta 10 chars |
+| `a` | `a` + prod(1) + tier(1) + nivel(1) + `0` + precio(4) [+ `0`] | Cambio de precio (centavos) | tier = `TierLavelWayne` (def. `0`); nivel `1`=contado / `0`=crédito; se envían ambos con 250 ms; sufijo `0` extra si `WayneFusion=Si` |
+| `S` | `S` + pos(2) + `00` | Autorizar sin límite | |
+| `P` | `P` + pos(2) + tipo(1) + `0` + valor(8) + grado(1) | PRESET | tipo `0`=importe (`DecimalesPresetWayne=-1` → `FormatFloat 000000.00`) / `1`=litros (`DecimalesPresetWayneLitros=3` → `00000.000`); grado `0`=todos (grado ≠ 0 requiere `SoportaSeleccionProducto=Si`) |
+| `E` | `E` + pos(2) | STOP / desautorizar | También al pasar de Cargando a Autorizada inesperadamente |
+| `G` | `G` + pos(2) | Reanudar | Tras varios reintentos I-Gas cambia a `R..` |
+| `R` | `R` + pos(2) + `0` · `R` + pos(2) | Venta completa (`FINV`) · liberar detenida | Se distinguen por longitud |
+
+### 5.3 Respuestas RX (Wayne → Consola)
+
+| Resp | Layout (índices 1-based del payload) | Interpretación |
+|---|---|---|
+| `l1` | — | Confirma el enlace; otro valor = "Error en comunicación con CONSOLA" |
+| `B00` + dígitos | UN dígito de estatus por posición desde [4] | |
+| `A` | [2..3]=pos, [4]=grado activo, [6..13]=volumen, [14+n..21+n]=importe, [22+n..26]=precio | n = `DigitosImporteA` (def. 0). vol÷1000, importe÷1000, precio÷1000 |
+| `C` | [2..3]=pos, [4]=producto, [6..14]=total | ÷100 (÷10 con `WayneFusion=Si` y `TDigvol=1`) |
+| ACK/NAK | un byte | NAK también resulta de BCC inválido en RX |
+
+**Estatus Wayne consola:** `0`=sin comunicación, `1`=inactivo, `2`=cargando,
+`3`=fin de carga, `5`=llamando, `8`=detenida, `9`=autorizada (`7`=deshabilitada
+es interno de I-Gas). Con estatus 3 y carga en curso, I-Gas sigue reportando
+`2` al Bridge hasta obtener la lectura final.
+
+**Validaciones del driver dignas de nota:** `WayneAjusteImporte` multiplica el
+importe ×10; si `2·vol·precio < importe` divide entre 10; si
+`importe < vol·precio·0.9` recalcula `importe = vol·precio`; en otro caso
+reconcilia `volumen = importe/precio` (`AjusteWayne/2/3` modifican la lógica).
+
+### 5.4 Ejemplos verificados (BCC XOR calculado con el algoritmo real)
+
+```
+B00                                        poll
+<STX>B0012305980<ETX><BCC=$45>             estatus de 8 posiciones
+A0100 <BCC=$43>                            solicita lectura pos 1
+<STX>A012000025500005482502150<ETX><BCC=$4B>  lectura: 25.500L $548.25 @$21.50
+C0110 <BCC=$40>                            solicita totalizador
+<STX>C0110000123456<ETX><BCC=$77>          total 1,234.56 L
+l1 <BCC=$5E>                               enlace
+N161 <BCC=$7B>                             init 16 posiciones, modo 1
+h0100 <BCC=$6A>  k0100 <BCC=$69>           desenllave
+g0112000000 <BCC=$66>                      mapeo grados 1,2 pos 1
+a10102050 <BCC=$65>                        precio contado $20.50
+a10002050 <BCC=$64>                        precio crédito $20.50
+S0100 <BCC=$51>                            autorizar sin límite
+P050000250000 <BCC=$51>                    preset importe $250.00 pos 5
+P0610000400002 <BCC=$62>                   preset 40.000 L grado 2 pos 6
+E07 <BCC=$41>   G08 <BCC=$4C>              stop / reanudar
+R090 <BCC=$68>  R10 <BCC=$50>              venta completa / liberar detenida
+<STX>A0100<ETX><BCC=$44>                   BCC INCORRECTO a propósito (real $43)
+```
+
+---
+
+## 6. Protocolo GILBARCO 2W (binario de nibbles)
+
+Gilbarco Two-Wire clásico (`UIGASGILBARCO.pas`). Protocolo **binario**: los
+datos viajan en el **nibble bajo** de cada carácter; no hay STX/ETX.
+
+### 6.1 Byte de comando
+
+Cada transacción inicia con **un solo byte**: `comando + posición` (la
+posición 16 viaja como 0). `GtwTimeout=1000` ms, `GtwTiempoCmnd=100` ms.
+
+| Byte | Función | Respuesta |
+|---|---|---|
+| `$0p` | Solicitar ESTATUS | 1 byte: nibble alto = estatus, nibble bajo = eco de la posición |
+| `$1p` | AUTORIZAR / REANUDAR | sin respuesta |
+| `$2p` | Anuncio de DATA BLOCK | 1 byte con nibble alto `$D` = listo; entonces I-Gas transmite el bloque carácter por carácter y confirma con un poll `$0p` |
+| `$3p` | DETENER (stop) | sin respuesta |
+| `$4p` | LEER VENTA en tiempo real | data block (mín. 33 bytes en 6 díg / 39 en 8 díg); reintentos por LRC: 3 |
+| `$5p` | LEER TOTALIZADORES | byte de posición + registros de 30 bytes (6 díg) / 42 (8 díg); validación `(len−4) mod tam = 0` |
+| `$6p` | VENTA EN PROCESO (importe) | 6/8 chars BCD **sin LRC** |
+| `$F0` | PARO GENERAL (all stop) | sin respuesta |
+
+**Estatus (nibble alto, `DameEstatus`):** `$6/$E`=Inactiva(1),
+`$9/$1`=Despachando(2), `$A/$B/$3`=FinDeVenta(3), `$0`=SinCom(0),
+`$7`=PistolaLevantada(5), `$C/$F`=Detenida(8), `$8`=Autorizada(9),
+`$D`=lista para recibir data block.
+
+### 6.2 Data block (TX tras `$2p`, y cuerpo de las respuestas `$4p`)
+
+```
+FF  DL  <palabras de control>  FB  LRC  F0
+```
+
+| Elemento | Cálculo (algoritmo real) |
+|---|---|
+| `DL` | `$E0 +` complemento a 2 del nibble bajo de `(longitud + 2)` — `DLChar` |
+| `LRC` | `$E0 + ((Σ nibbles bajos XOR $F) + 1) and $F`, sobre todo lo anterior (`FF..FB`) — `LrcCheckChar`/`ValidaLRC` |
+| `F0` | fin de transmisión (EOT); en RX el driver valida F0 al final y el LRC en la penúltima posición |
+
+**Palabras de control** (identificador + datos):
+
+| Id | Significado |
+|---|---|
+| `F1` / `F2` | Tipo de preset: VOLUMEN / IMPORTE |
+| `F4` / `F5` | Nivel de precio 1 (contado) / 2 (crédito) |
+| `F6` + `($E0+g−1)` | Grado/manguera g |
+| `F7` + BCD | Precio (4 díg en 6 dígitos / 6 en 8 dígitos) |
+| `F8` + BCD | Monto del preset (5/6 díg u 8) |
+| `F9` + BCD | Litros (lectura o total) |
+| `FA` + BCD | Importe (lectura o total) |
+| `FB` | Fin de datos |
+
+**BCD Gilbarco:** cada dígito viaja en un carácter `$E0 + dígito`, el **menos
+significativo primero** (`BcdToStr` invierte; `BcdToInt` multiplica el nibble
+bajo del char i por 10^(i−1)).
+
+### 6.3 Respuestas largas (no se auto-describen → combo "Interpretar como")
+
+- **`$4p` lectura:** I-Gas localiza las palabras `F6` (manguera = valor+1),
+  `F7` (precio), `F9` (litros) y `FA` (importe) **por búsqueda**
+  (`DataControlWordValue`), sin importar el offset; el resto se ignora.
+  Divisores: todo ÷100 en 6 dígitos; en 8 dígitos litros e importe ÷1000.
+- **`$5p` totales:** tras eliminar el byte de posición, registros de 30/42
+  bytes: nibble bajo del 2º byte + 1 = manguera; `F9`+8/12 = total litros;
+  `FA`+8/12 = total pesos (÷100). Hasta 3 mangueras.
+- **`$6p`:** 6/8 chars BCD = importe en proceso (÷100 / ÷1000); solo se valida
+  la longitud exacta.
+
+### 6.4 Ejemplos verificados (DL y LRC calculados con el algoritmo real)
+
+```
+01 / 12 / 33 / 44 / 55 / 66 / F0           bytes de comando sueltos (TX)
+23 FF E2 F2 F4 F6 E1 F8 E0 E0 E0 E5 E2 E0 FB E8 F0   preset IMPORTE $250.00 grado 2 pos 3
+23 FF E3 F1 F4 F6 E1 F8 E0 E0 E0 E4 E0 FB EB F0      preset LITROS 40.00 L grado 2 pos 3
+24 FF E5 F4 F6 E0 F7 E0 E5 E1 E2 FB E8 F0            precio $21.50 nivel 1 manguera 1 pos 4
+24 FF E5 F5 F6 E0 F7 E0 E5 E1 E2 FB E7 F0            precio $21.50 nivel 2 manguera 1 pos 4
+25 FF EC F4 FB E6 F0                                  nivel de precio contado pos 5
+63 / 91 / 75 / 82 / A4 / C2 / 06 / D3     estatus RX de 1 byte (inactiva pos 3,
+                                           despachando pos 1, llamando pos 5,
+                                           autorizada pos 2, fin de venta pos 4,
+                                           detenida pos 2, sin com pos 6,
+                                           lista para data block pos 3)
+A1 F6 E1 F7 E0 E5 E1 E2 F9 E0 E5 E5 E2 E0 E0 FA E5 E2 E8 E4 E5 E0 ... E2 F0
+        RX $4p 6 díg (33 bytes): manguera 2, $21.50, 25.50 L, $548.25
+E1 E0 E0 F9 E6 E5 E4 E3 E2 E1 E0 E0 FA E1 E2 E3 E4 E5 E6 E2 E0 ... E0 F0
+        RX $5p 6 díg (34 bytes): manguera 1, 1,234.56 L, $26,543.21
+E0 E5 E2 E1 E0 E0                          RX $6p 6 díg: $12.50 en proceso
+23 FF E2 F2 F4 F6 E1 F8 E0 E0 E0 E5 E2 E0 FB E9 F0   LRC INCORRECTO a propósito (real E8)
+```
+
+---
+
+## 7. Arquitectura de la herramienta (Delphi 7)
+
+### 7.1 Archivos del proyecto `AnalizadorProtocolos`
 
 | Archivo | Contenido |
 |---|---|
 | `AnalizadorProtocolos.dpr` | Proyecto |
 | `UAnalizadorBase.pas` | `TParte` (Texto/Nombre/Descripcion), clase abstracta `TAnalizadorBase` y el **render común** al `TRichEdit`: encabezado (tipo + dirección TX/RX), trama con **cada parte en un color** (paleta `ColoresParte[0..7]`, fuente Courier 14 bold; prefijo/sufijo de trama en gris), desglose línea por línea en el mismo color, línea de validación (verde/rojo) y nota en naranja |
-| `UProtoBennett.pas` | `TAnalizadorBennett`: normaliza entrada (tokens `<STX>/<ETX>/<ACK>/<NAK>` y hexdump con bytes de control), extrae payload, interpreta B/A/1/N/U/K/L/E/S/P/5/F/J y valida el BCC |
+| `UProtoBennett.pas` | `TAnalizadorBennett`: normaliza entrada (tokens `<STX>/<ETX>/<ACK>/<NAK>` y hexdump con bytes de control), extrae payload, interpreta B/A/1/N/U/K/L/E/S/P/5/F/J y valida el BCC (suma) |
 | `UProtoWayne2W.pas` | `TAnalizadorWayne2W`: parsea hex (con o sin espacios), detecta tramas empacadas 00 00…FF de 5/13 bytes o datos crudos de 1/5 bytes, valida los pares byte+complemento, interpreta TX por byte de control y RX según el combo "Interpretar como" (Estatus/Precio/Importe/Volumen/Totalizador) |
+| `UProtoPam.pas` | `TAnalizadorPam` (**PAM 1000**): misma normalización ASCII que Bennett pero con **BCC XOR**; interpreta B/A/C/T/D/L/G/E/S/R/X/P/`@02`/`@10` y las respuestas de venta (cargando `0` / concluida / no mapeada `\`), totales v1 (`C`) y v3 (`@`); sin combo de contexto |
+| `UProtoWayneCns.pas` | `TAnalizadorWayneCns` (**Wayne Consola**): mismo empaque XOR; interpreta B/A/C/l/N/h/k/g/a/S/P/E/G/R distinguiendo TX de RX por longitud; sin combo de contexto |
+| `UProtoGilbarco.pas` | `TAnalizadorGilbarco` (**Gilbarco 2W**): entrada solo hexadecimal; interpreta el byte de comando suelto, el byte de comando + data block `FF..F0` (validando DL, LRC y EOT con los algoritmos reales) y decodifica las palabras de control F1..FB con BCD LSB-primero; **combo de contexto de 9 opciones** para las respuestas ($0p, $2p, $4p/$5p/$6p en 6 u 8 dígitos) |
 | `UPrincipal.pas/.dfm` | Formulario con un `TPageControl`; **las pestañas y sus controles se crean en runtime** a partir de los analizadores registrados. La pestaña toma su Caption de `Analizador.Nombre` |
 
-### 4.2 Contrato de la clase base
+### 7.2 Contrato de la clase base
 
 ```pascal
 TAnalizadorBase = class
@@ -257,19 +514,19 @@ end;
 ```
 
 El **combo de contexto** ("Interpretar como") solo aparece si el protocolo
-define contextos. Bennett no lo necesita (sus tramas ASCII se auto-describen);
-Wayne sí, porque una respuesta binaria de 13 bytes no indica a qué comando
-responde.
+define contextos. Bennett, PAM y Wayne Consola no lo necesitan (sus tramas
+ASCII se auto-describen); Wayne 2W y Gilbarco sí, porque una respuesta binaria
+no indica a qué comando responde.
 
-### 4.3 Cómo agregar una MARCA NUEVA (checklist para futuros chats)
+### 7.3 Cómo agregar una MARCA NUEVA (checklist para futuros chats)
 
 1. Analizar la unidad `UIGAS<MARCA>.pas` del driver: ubicar el armado de la
    trama TX (buscar `PutString`/`PutChar`/`TransmiteComando`), la recepción
    (`TriggerAvail`/`ProcesaLinea`), el checksum, y catalogar los comandos con
    sus campos y las respuestas con sus offsets/decodificación.
 2. Crear `UProto<Marca>.pas` heredando de `TAnalizadorBase` (usar
-   `UProtoBennett` como plantilla para protocolos ASCII y `UProtoWayne2W`
-   para binarios).
+   `UProtoBennett`/`UProtoPam` como plantilla para protocolos ASCII y
+   `UProtoWayne2W`/`UProtoGilbarco` para binarios).
 3. Agregar la unidad al `uses` de `UPrincipal` y del `.dpr`, y una línea en
    `TfrmPrincipal.FormCreate`:
    `RegistraAnalizador(TAnalizador<Marca>.Create);`
@@ -278,17 +535,21 @@ responde.
 4. Precargar ejemplos con checksum/empacado **calculado con el algoritmo real**
    (verificado por script), incluyendo un caso corrupto y uno no reconocido
    para probar la validación.
-5. Documentar el protocolo en este MD (sección nueva al estilo de las §2 y §3).
+5. Documentar el protocolo en este MD (sección nueva al estilo de las §2–§6).
 
-### 4.4 Formatos de entrada aceptados
+### 7.4 Formatos de entrada aceptados
 
-- **Bennett:** texto plano (`P01005000`), tokens (`<STX>...<ETX>`), o hexdump
-  con espacios (`02 50 30 ... 03 A7`; se reconoce como hex solo si contiene
-  02/03/06/15 para no confundir payloads de puros dígitos).
+- **Bennett / PAM / Wayne Consola:** texto plano (`P01005000`), tokens
+  (`<STX>...<ETX>`), o hexdump con espacios (`02 50 30 ... 03 A7`; se reconoce
+  como hex solo si contiene 02/03/06/15 para no confundir payloads de puros
+  dígitos).
 - **Wayne 2W:** hexadecimal con espacios/comas o continuo; trama empacada
   completa (5/13 bytes) o bytes de datos crudos (1/5 bytes).
+- **Gilbarco 2W:** hexadecimal con espacios/comas o continuo; byte de comando
+  suelto, byte de comando + data block, data block solo, o respuestas largas
+  (con el combo de contexto).
 
-### 4.5 Decisiones de diseño
+### 7.5 Decisiones de diseño
 
 - Delphi 7 / VCL estándar únicamente (`StdCtrls`, `ComCtrls`, `ExtCtrls`);
   sin DevExpress ni terceros para que compile en cualquier instalación.
@@ -297,19 +558,28 @@ responde.
 - Colores reciclados con `mod 8`; prefijo/sufijo de trama (STX/ETX/BCC,
   `00 00`/`FF`) siempre en gris para distinguir envoltura de datos.
 - La validación de integridad usa exactamente los algoritmos del driver
-  (`CalculaBCC` Bennett; pares complemento `DesEmpacaWayne`).
+  (`CalculaBCC` suma en Bennett; **XOR** en PAM/Wayne Consola; pares
+  complemento `DesEmpacaWayne`; `DLChar`/`LrcCheckChar`/`ValidaLRC` en
+  Gilbarco).
 
 ---
 
-## 5. Pendientes y siguientes pasos
+## 8. Pendientes y siguientes pasos
 
 - [ ] Confirmar con capturas reales el byte [4] de las respuestas Bennett `A`/`1`.
-- [ ] Confirmar en campo el layout de los bytes D1..D4 de las respuestas Wayne
+- [ ] Confirmar en campo el layout de los bytes D1..D4 de las respuestas Wayne 2W
       (I-Gas solo lee los campos documentados; el resto se muestra como
       "no interpretado").
+- [ ] Confirmar en campo los caracteres no leídos de PAM ([5..13] al cargar,
+      [5] en la lectura final, [19..36] entre productos de los totales v3) y
+      de Wayne Consola ([5] de `A`/`C`); hoy se etiquetan "No leído".
+- [ ] Confirmar en campo el encabezado real de las respuestas Gilbarco `$4p`
+      y `$5p` (I-Gas localiza las palabras de control por búsqueda, así que el
+      analizador tolera cualquier relleno, pero el layout exacto del
+      dispensario no está documentado).
 - [ ] Posible mejora: modo "sesión" que recuerde el último comando TX enviado
-      para auto-seleccionar el contexto de la respuesta Wayne.
+      para auto-seleccionar el contexto de la respuesta Wayne 2W / Gilbarco.
 - [ ] Posible mejora: pegar un log completo del espía y analizar trama por trama.
 - [ ] Marcas candidatas a agregar (drivers existentes en I-Gas): TEAM
       (`UIGASTEAM.pas`, ya analizado parcialmente en otra sesión: comandos A1,
-      totalizadores por diferencia, precisión /1000), Gilbarco, etc.
+      totalizadores por diferencia, precisión /1000), etc.
