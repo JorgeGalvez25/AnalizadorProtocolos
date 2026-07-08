@@ -8,7 +8,8 @@ uses
   UProtoPam in 'UProtoPam.pas',
   UProtoWayneCns in 'UProtoWayneCns.pas',
   UProtoGilbarco in 'UProtoGilbarco.pas',
-  UPrincipal in 'UPrincipal.pas' {frmPrincipal};
+  UPrincipal in 'UPrincipal.pas' {frmPrincipal},
+  UProtoTeam in 'UProtoTeam.pas';
 
 {$R *.res}
 

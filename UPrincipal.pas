@@ -20,7 +20,7 @@ uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls,
   UAnalizadorBase, UProtoBennett, UProtoWayne2W, UProtoPam, UProtoWayneCns,
-  UProtoGilbarco;
+  UProtoGilbarco, UProtoTeam;
 
 type
   TTabProtocolo = record
@@ -175,12 +175,13 @@ var
   i: Integer;
 begin
   // ============ REGISTRO DE MARCAS / PROTOCOLOS ============
-  RegistraAnalizador(TAnalizadorBennett.Create);
-  RegistraAnalizador(TAnalizadorWayne2W.Create);
-  RegistraAnalizador(TAnalizadorPam.Create);
   RegistraAnalizador(TAnalizadorWayneCns.Create);
+  RegistraAnalizador(TAnalizadorBennett.Create);
+  RegistraAnalizador(TAnalizadorTeam.Create);
+  RegistraAnalizador(TAnalizadorPam.Create);
+  
   RegistraAnalizador(TAnalizadorGilbarco.Create);
-  // Marcas futuras: RegistraAnalizador(TAnalizadorTeam.Create); etc.
+  RegistraAnalizador(TAnalizadorWayne2W.Create);
   // =========================================================
 
   PageControl1.ActivePageIndex := 0;
