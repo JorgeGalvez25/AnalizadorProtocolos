@@ -20,7 +20,7 @@ uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls,
   UAnalizadorBase, UProtoBennett, UProtoWayne2W, UProtoPam, UProtoWayneCns,
-  UProtoGilbarco, UProtoTeam;
+  UProtoGilbarco, UProtoTeam, UProtoHongYang;
 
 type
   TTabProtocolo = record
@@ -179,7 +179,7 @@ begin
   RegistraAnalizador(TAnalizadorBennett.Create);
   RegistraAnalizador(TAnalizadorTeam.Create);
   RegistraAnalizador(TAnalizadorPam.Create);
-  
+  RegistraAnalizador(TAnalizadorHongYang.Create);
   RegistraAnalizador(TAnalizadorGilbarco.Create);
   RegistraAnalizador(TAnalizadorWayne2W.Create);
   // =========================================================

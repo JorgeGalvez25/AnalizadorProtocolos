@@ -1,10 +1,33 @@
-# Archivos compilados y ejecutables
+# Delphi 7 generated files
+*.~*
+*.dcu
+*.dcp
+*.dsk
 *.exe
-
-# Archivos de mapa y recursos generados
 *.map
+*.ncb
+*.obj
+*.pdb
+*.res
+*.tds
+*.tvsconfig
+*.identcache
+*.rar
 *.drc
 
-# Archivos de configuración de proyecto/usuario (comúnmente generados localmente en Delphi)
-*.cfg
+# IDE project settings
+*.bdsproj
+*.bdsproj.local
+*.bpg
 *.dof
+*.dsk
+*.groupproj
+*.res
+*.tvsconfig
+*.tvslocal
+
+# OS-generated files
+._*
+.DS_Store
+Thumbs.db
+*.ddp

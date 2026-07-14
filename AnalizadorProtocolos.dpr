@@ -9,7 +9,8 @@ uses
   UProtoWayneCns in 'UProtoWayneCns.pas',
   UProtoGilbarco in 'UProtoGilbarco.pas',
   UPrincipal in 'UPrincipal.pas' {frmPrincipal},
-  UProtoTeam in 'UProtoTeam.pas';
+  UProtoTeam in 'UProtoTeam.pas',
+  UProtoHongYang in 'UProtoHongYang.pas';
 
 {$R *.res}
 

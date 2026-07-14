@@ -71,7 +71,7 @@ const
 
 function TAnalizadorWayneCns.Nombre: string;
 begin
-  Result := 'Wayne Consola';
+  Result := 'Wayne';
 end;
 
 function TAnalizadorWayneCns.CalculaBCC(const ss: string): Char;

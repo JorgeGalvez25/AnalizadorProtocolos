@@ -19,8 +19,8 @@ object frmPrincipal: TfrmPrincipal
   object PageControl1: TPageControl
     Left = 0
     Top = 0
-    Width = 852
-    Height = 609
+    Width = 844
+    Height = 601
     Align = alClient
     TabOrder = 0
   end
