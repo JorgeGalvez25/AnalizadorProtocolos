@@ -214,7 +214,7 @@ begin
   AgregaParte(Copy(lin, 4, 1), 'Grado activo',
     'Posicion del producto que despacha (1..4); 0 conserva el anterior');
   if Length(lin) >= 5 then
-    AgregaParte(lin[5], 'No leido', 'Caracter [5] no interpretado por I-Gas');
+    AgregaParte(lin[5], 'Nivel de precio','I-Gas lo ignora');
   vol := Copy(lin, 6, 8);
   AgregaParte(vol, 'Volumen',
     'Digitos [6..13] / 1000 = ' + DigitosAValor(vol, 1000, 3) + ' L');
@@ -253,7 +253,8 @@ begin
   AgregaParte(Copy(lin, 2, 2), 'Posicion', 'Posicion de carga que responde');
   AgregaParte(lin[4], 'Producto', 'Posicion del producto (grado)');
   if Length(lin) >= 5 then
-    AgregaParte(lin[5], 'No leido', 'Caracter [5] no interpretado');
+    AgregaParte(lin[5], 'Reservado (sin confirmar)',
+      'Caracter [5]: no interpretado por I-Gas.');
   tot := Copy(lin, 6, 9);
   AgregaParte(tot, 'Total litros',
     'Digitos [6..14] / 100 = ' + DigitosAValor(tot, 100, 2) +
