@@ -176,7 +176,7 @@ begin
     AgregaParte(lin[1], 'Comando', 'Letra "B": solicita el estatus global');
     if Length(lin) >= 3 then
       AgregaParte(Copy(lin, 2, 2), 'Direccion',
-        '"00" = difusion (todas las posiciones). Enviado cada ciclo del Timer1');
+        '"00" = difusion (todas las posiciones)');
     Exit;
   end;
 
@@ -186,9 +186,8 @@ begin
   AgregaParte(Copy(lin, 2, 2), 'Direccion', 'Eco de "00"');
 
   ss := Copy(lin, 4, Length(lin) - 3);
-  FNota := Format('La respuesta reporta %d posiciones de carga ' +
-    '(UN digito de estatus por posicion, a diferencia de Bennett que usa 2).',
-    [Length(ss)]);
+  FNota := Format('La respuesta reporta %d posiciones (1 digito de estatus ' +
+    'cada una).', [Length(ss)]);
   for xpos := 1 to Length(ss) do
     AgregaParte(ss[xpos], Format('Posicion %.2d', [xpos]),
       Format('Estatus %s: %s', [ss[xpos], DescEstatus(ss[xpos])]));
@@ -249,10 +248,8 @@ begin
     AgregaParte(pre, 'Precio',
       'Digitos [22..26] / 100 (DigitosPrecio=1 def.) = $' +
       DigitosAValor(pre, 100, 2) + ' /L');
-    FNota := 'El driver corrige errores de digitos: si 2*vol*precio<importe ' +
-      'divide el importe entre 10; si 2*importe<vol*precio lo multiplica ' +
-      'por 10; con AjustePAM=Si recalcula importe=vol*precio si difieren ' +
-      '>= $0.015.';
+    FNota := 'El driver corrige el importe si no cuadra con vol*precio ' +
+      '(desplaza un digito) y, con AjustePAM=Si, lo recalcula si difieren >= $0.015.';
   end;
 end;
 
@@ -340,9 +337,8 @@ begin
   FDireccion := 'RX: PAM -> Consola I-Gas';
   AgregaParte(Copy(lin, 1, 4), 'Encabezado', 'Eco del comando @10');
   AgregaParte(Copy(lin, 5, 2), 'Posicion', 'Posicion de carga que responde');
-  FNota := 'I-Gas lee hasta 4 productos: grado en [8] y total en [9..18]; ' +
-    'los siguientes en [37]/[38..47], [66]/[67..76] y [95]/[96..105] ' +
-    '(cada total: 10 digitos / 100 = litros).';
+  FNota := 'Se leen hasta 4 productos: grado + total (10 digitos/100 = litros) ' +
+    'en [8]/[9..18], [37]/[38..47], [66]/[67..76] y [95]/[96..105].';
   if Length(lin) >= 7 then
     AgregaParte(lin[7], 'No leido', 'Caracter [7] no interpretado');
 
@@ -380,17 +376,13 @@ begin
   if lin = idACK then begin
     FTipo      := 'ACK (06h) - Confirmacion';
     FDireccion := 'RX: PAM -> Consola I-Gas';
-    AgregaParte('<ACK>', 'Control',
-      'La consola PAM ACEPTO el comando anterior (p.ej. el "T.." de nivel ' +
-      'de precios)');
+    AgregaParte('<ACK>', 'Control', 'La consola PAM acepto el comando anterior');
     Exit;
   end;
   if lin = idNAK then begin
     FTipo      := 'NAK (15h) - Rechazo';
     FDireccion := 'RX: PAM -> Consola I-Gas';
-    AgregaParte('<NAK>', 'Control',
-      'La consola PAM RECHAZO el comando anterior (error en cambio de ' +
-      'precios o preset)');
+    AgregaParte('<NAK>', 'Control', 'La consola PAM rechazo el comando anterior');
     Exit;
   end;
 

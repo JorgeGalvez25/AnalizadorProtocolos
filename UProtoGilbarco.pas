@@ -199,26 +199,23 @@ begin
           FTipo := Format('$0p - Solicitar ESTATUS de la posicion %d', [posr]);
           AgregaParte(Hx(FBytes[idx]), 'Byte de comando',
             'Nibble alto 0 = poll de estatus; ' + spos);
-          FNota := 'La respuesta es UN byte: nibble alto = estatus, nibble ' +
-            'bajo = eco de la posicion. Tambien se envia despues del data ' +
-            'block del $2p para confirmar la recepcion.';
+          FNota := 'Respuesta de 1 byte: nibble alto = estatus, nibble ' +
+            'bajo = eco de posicion. Tambien confirma la recepcion del data block del $2p.';
         end;
     $1: begin
           FTipo := Format('$1p - AUTORIZAR / REANUDAR posicion %d', [posr]);
           AgregaParte(Hx(FBytes[idx]), 'Byte de comando',
             'Nibble alto 1 = autoriza el despacho (o reanuda si estaba ' +
             'detenida); ' + spos);
-          FNota := 'Sin respuesta. I-Gas lo envia tras el preset ($2p) para ' +
-            'activar la bomba.';
+          FNota := 'Sin respuesta. Se envia tras el preset ($2p) para activar la bomba.';
         end;
     $2: begin
           FTipo := Format('$2p - Anuncio de DATA BLOCK para la posicion %d', [posr]);
           AgregaParte(Hx(FBytes[idx]), 'Byte de comando',
             'Nibble alto 2 = "voy a enviar un data block" (preset, cambio ' +
             'de precio o nivel); ' + spos);
-          FNota := 'El dispensario contesta 1 byte con nibble alto $D ' +
-            '(listo); entonces I-Gas transmite el bloque FF..F0 y lo ' +
-            'confirma con un poll $0p.';
+          FNota := 'Respuesta: 1 byte con nibble alto $D (listo). Luego se ' +
+            'transmite el bloque FF..F0 y se confirma con un poll $0p.';
         end;
     $3: begin
           FTipo := Format('$3p - DETENER (stop) posicion %d', [posr]);
@@ -390,9 +387,8 @@ begin
     AgregaParte(Hx(FBytes[High(FBytes)]), 'EOT', 'F0 = fin de transmision');
   end;
   ValidaLRCyEOT(desde);
-  FNota := 'Secuencia completa del $2p: I-Gas envia $2p, espera el byte ' +
-    '$Dp (listo), transmite este bloque caracter por caracter y remata ' +
-    'con un poll $0p para confirmar.';
+  FNota := 'Secuencia del $2p: se envia $2p, se espera $Dp (listo), se ' +
+    'transmite este bloque y se confirma con un poll $0p.';
 end;
 
 procedure TAnalizadorGilbarco.InterpretaEstatusRX;
@@ -406,13 +402,11 @@ begin
   posr := lo;
   if posr = 0 then posr := 16;
   AgregaParte(Hx(FBytes[0]), 'Byte de estatus',
-    Format('Nibble alto $%x: %s. Nibble bajo %d = posicion %d (I-Gas ' +
-      'valida que coincida con la solicitada)',
+    Format('Nibble alto $%x: %s. Nibble bajo %d = posicion %d',
       [hi, DescEstatusNibble(hi), lo, posr]));
-  FNota := 'Mapa completo de nibbles (DameEstatus): $6/$E=Inactiva(1), ' +
-    '$9/$1=Despachando(2), $A/$B/$3=FinDeVenta(3), $0=SinCom(0), ' +
-    '$7=PistolaLevantada(5), $C/$F=Detenida(8), $8=Autorizada(9), ' +
-    '$D=ListaParaDataBlock.';
+  FNota := 'Mapa de nibbles: $6/$E=Inactiva(1), $9/$1=Despachando(2), ' +
+    '$A/$B/$3=FinDeVenta(3), $0=SinCom(0), $7=PistolaLevantada(5), ' +
+    '$C/$F=Detenida(8), $8=Autorizada(9), $D=ListaParaDataBlock.';
 end;
 
 procedure TAnalizadorGilbarco.InterpretaLecturaRX(ADigitos: Integer);
@@ -474,9 +468,8 @@ begin
   if not visto then
     FNota := 'No se localizaron palabras de control F6/F7/F9/FA en la trama.'
   else
-    FNota := 'I-Gas localiza cada palabra de control por busqueda ' +
-      '(DataControlWordValue), sin importar el offset; el resto de la ' +
-      'trama se ignora.';
+    FNota := 'Cada palabra de control se localiza por busqueda, sin ' +
+      'importar el offset; el resto de la trama se ignora.';
 
   if High(FBytes) >= 2 then begin
     AgregaParte(Hx(FBytes[High(FBytes) - 1]), 'LRC',

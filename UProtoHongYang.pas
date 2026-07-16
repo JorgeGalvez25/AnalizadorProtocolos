@@ -254,14 +254,14 @@ begin
   calc := Checksum(0, High(FBytes) - 1);
   recibido := FBytes[High(FBytes)];
   AgregaParte(Hx(FBytes[High(FBytes)]), 'BCC',
-    Format('$%.2x (complemento a 256 de la suma de TODOS los bytes anteriores, mod 256)',
+    Format('$%.2x (complemento a 256 de la suma de todos los bytes anteriores)',
       [recibido]));
   if calc = recibido then
-    PonValidacion(Format('BCC recibido $%.2x = calculado $%.2x ' +
-      '(CalculaBCC: 256 - suma de bytes mod 256) -> CORRECTO', [recibido, calc]), True)
+    PonValidacion(Format('BCC recibido $%.2x = calculado $%.2x -> CORRECTO',
+      [recibido, calc]), True)
   else
-    PonValidacion(Format('BCC recibido $%.2x <> calculado $%.2x ' +
-      '(CalculaBCC: 256 - suma de bytes mod 256) -> INCORRECTO', [recibido, calc]), False);
+    PonValidacion(Format('BCC recibido $%.2x <> calculado $%.2x -> INCORRECTO',
+      [recibido, calc]), False);
 end;
 
 // Replica DameEstatus: cascada de bits (bit3=xst[5], bit6=xst[2], bit1=xst[7],
@@ -331,8 +331,7 @@ var
 begin
   FDireccion := 'TX: Consola I-Gas -> Dispensario Hong Yang';
   AgregaParte(Hx(FBytes[0]), 'Direccion',
-    Format('%d (direccion/CPU del dispensario; en el bus fisico este byte ' +
-      'viaja con paridad MARK, no visible en un hexdump de 8 bits)', [FBytes[0]]));
+    Format('%d (direccion/CPU del dispensario)', [FBytes[0]]));
   AgregaParte(Hx(FBytes[1]), 'Longitud',
     Format('%d (bytes de ADDR..DATA, NO incluye el BCC)', [FBytes[1]]));
   AgregaParte(Hx(FBytes[2]), 'Lado', Format('%d (manguera/lado)', [FBytes[2]]));
@@ -441,10 +440,8 @@ begin
       IfSufijo(swerror, ', ERROR'), IfSufijo(swlocked, ', ENLLAVADO/LOCKED')]));
 
   ValidaChecksum;
-  FNota := 'Esta respuesta de 3 bytes es IDENTICA sin importar si confirma C, D, ' +
-    'U, S o L: el driver real solo sabe a cual corresponde porque recuerda ' +
-    'CharCmnd (el ultimo comando enviado a esta manguera). Este analizador no ' +
-    'tiene esa memoria de sesion, por eso se muestra como confirmacion generica.';
+  FNota := 'Esta respuesta de 3 bytes es identica sin importar si confirma ' +
+    'C, D, U, S o L; el driver real sabe cual fue por el ultimo comando enviado.';
 end;
 
 // ---------------------------------------------------------------------------
@@ -502,8 +499,8 @@ begin
 
   precioRaw := ValorBCDLSB(5, 3);
   AgregaParte(HxRango(5, 7), 'Precio (no leido por el driver)',
-    Format('3 bytes BCD (6 digitos, LSB primero) = %d / 100 = $%s -- ' +
-      'ProcesoComandoA usa el precio ya cacheado (LPrecios), no este campo',
+    Format('3 bytes BCD (6 digitos, LSB primero) = %d / 100 = $%s ' +
+      '(el driver usa el precio ya cacheado, no este campo)',
       [precioRaw, FormatFloat('#,##0.00', precioRaw / 100)]));
 
   volumenRaw := ValorBCDLSB(8, 3);
@@ -541,9 +538,8 @@ begin
 
   importeRaw := ValorBCDLSB(14, 6);
   AgregaParte(HxRango(14, 19), 'Total importe (no leido por el driver)',
-    Format('6 bytes BCD (12 digitos, LSB primero) = %d / 100 = $%s -- ' +
-      'ProcesoComandoN solo extrae los litros (ExtraeBCD(ss,9,14)); este ' +
-      'campo esta presente en la trama pero el driver no lo usa',
+    Format('6 bytes BCD (12 digitos, LSB primero) = %d / 100 = $%s ' +
+      '(el driver solo extrae los litros)',
       [importeRaw, FormatFloat('#,##0.00', importeRaw / 100)]));
 
   ValidaChecksum;

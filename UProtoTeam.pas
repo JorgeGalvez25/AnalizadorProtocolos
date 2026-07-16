@@ -214,12 +214,10 @@ begin
     Format('BCD=%.2d (suma decimal de los campos desde "lado/subcmd" mod 100)',
       [recibido]));
   if calc = recibido then
-    PonValidacion(Format('Checksum recibido %.2d = calculado %.2d ' +
-      '(ValidaChecksumTeam: suma BCD campos 5..N-1 mod 100) -> CORRECTO',
+    PonValidacion(Format('Checksum recibido %.2d = calculado %.2d -> CORRECTO',
       [recibido, calc]), True)
   else
-    PonValidacion(Format('Checksum recibido %.2d <> calculado %.2d ' +
-      '(ValidaChecksumTeam: suma BCD campos 5..N-1 mod 100) -> INCORRECTO',
+    PonValidacion(Format('Checksum recibido %.2d <> calculado %.2d -> INCORRECTO',
       [recibido, calc]), False);
 end;
 
@@ -284,12 +282,11 @@ begin
   AgregaParte(Hx(FBytes[2]), 'Fijo', 'Siempre $00');
   AgregaParte(Hx(FBytes[3]), 'Longitud', DescLen(3, 2));
   AgregaParte(Hx(FBytes[4]), 'Lado',
-    Format('BCD = %.2d (lado/manguera del dispensario a consultar; ' +
-      'DamePosTeam combina dispensario+lado para ubicar la posicion de carga I-Gas)',
+    Format('BCD = %.2d (lado/manguera del dispensario a consultar)',
       [TokenBCD(FBytes[4])]));
   ValidaChecksum(4);
-  FNota := 'El driver envia este poll ciclicamente por cada posicion configurada ' +
-    '(no existe un "B00" de difusion como en Bennett: cada A3 consulta UNA posicion).';
+  FNota := 'El driver envia este poll ciclicamente por cada posicion; no ' +
+    'existe un "B00" de difusion como en Bennett, cada A3 consulta una sola.';
 end;
 
 procedure TAnalizadorTeam.InterpretaA3RX;
@@ -312,27 +309,23 @@ begin
   b := FBytes[5];
   DescEstatusA3(b, estatus, desc, modo);
   AgregaParte(Hx(b), 'Byte de estatus',
-    Format('%s. Bits (MSB primero, 8 bits): b6=Modo(%s) b5=Autorizado ' +
-      'b1=Despachando b0=Autorizado(prioritario) -> Estatus I-Gas %d (%s)',
-      [Hx(b), modo, estatus, desc]));
+    Format('Bits: b6=Modo(%s) b5=Autorizado b1=Despachando b0=Autorizado(prioritario) ' +
+      '-> Estatus I-Gas %d (%s)', [modo, estatus, desc]));
 
   manguera := FBytes[6] and $0F;
   if manguera > 0 then
     AgregaParte(Hx(FBytes[6]), 'Manguera activa',
-      Format('Nibble bajo = %d (manguera/grado enganchado). Solo se actualiza ' +
-        'si es > 0; con "00" el driver conserva el valor anterior', [manguera]))
+      Format('Nibble bajo = %d (manguera/grado enganchado)', [manguera]))
   else
     AgregaParte(Hx(FBytes[6]), 'Manguera activa',
-      'Nibble bajo = 0: no hay manguera reportada, el driver conserva la anterior');
+      'Nibble bajo = 0: sin manguera reportada, se conserva la anterior');
 
-  AgregaParte(Hx(FBytes[7]), 'Reservado', 'No leido por el driver actual (siempre $00 en capturas)');
+  AgregaParte(Hx(FBytes[7]), 'Reservado', 'No leido por el driver (siempre $00 en capturas)');
 
   ValidaChecksum(4);
-  FNota := 'Estatus derivado (DameEstatus): b1=1 -> Despachando(5); si b1=0, ' +
-    'b5=1 -> Autorizado(2), si no Inactivo(1); b0=1 fuerza Autorizado(9) con ' +
-    'prioridad sobre lo anterior. Los estatus 7/8 (fin de venta/detenida) los ' +
-    'agrega el driver con una variable interna (finventa) que NO viaja en esta ' +
-    'trama, por lo que no son deducibles solo con este byte.';
+  FNota := 'b1=1 -> Despachando(5); si b1=0, b5=1 -> Autorizado(2), si no ' +
+    'Inactivo(1); b0=1 fuerza Autorizado(9). Los estatus 7/8 los agrega el ' +
+    'driver internamente y no viajan en esta trama.';
 end;
 
 // ---------------------------------------------------------------------------
@@ -393,20 +386,16 @@ begin
     AgregaParte(HxRango(6, 9), 'Volumen',
       Format('4 bytes BCD (8 digitos, MSB primero) = %d / 100 = %s L%s',
         [valorRaw, FormatFloat('#,##0.00', valorRaw / 100), sufijoVacio]));
-    FNota := 'Con tipo=00 (litros) el driver SOLO actualiza "volumen" (2 decimales ' +
-      'implicitos, /100). Nota: el preset por litros (ComandoL) usa en cambio 3 ' +
-      'decimales (/1000); es una discrepancia real de precision entre lectura y ' +
-      'preset presente en UIGASTEAM.';
+    FNota := 'Con tipo=00 el driver solo actualiza "volumen" (2 decimales, /100); ' +
+      'el preset por litros (ComandoL) usa en cambio 3 decimales (/1000).';
   end
   else if tipo = 1 then begin
     AgregaParte(Hx(FBytes[5]), 'Tipo', '$01 = IMPORTE (eco)');
     AgregaParte(HxRango(6, 9), 'Importe',
       Format('4 bytes BCD (8 digitos, MSB primero) = %d / 100 = $%s%s',
         [valorRaw, FormatFloat('#,##0.00', valorRaw / 100), sufijoVacio]));
-    FNota := 'Con tipo=01 (pesos) la trama SOLO trae el importe; el driver calcula ' +
-      'el volumen dividiendo importe/precio vigente (el precio no viaja en esta ' +
-      'respuesta). Con este importe I-Gas arma internamente una linea "A.." ' +
-      'equivalente a la de otros protocolos para reusar el mismo motor de estado.';
+    FNota := 'Con tipo=01 la trama solo trae el importe; el driver calcula el ' +
+      'volumen dividiendo importe/precio vigente (el precio no viaja aqui).';
   end
   else
     AgregaParte(HxRango(6, 9), 'Datos', 'Tipo no reconocido; no se interpreta el valor');
@@ -442,9 +431,7 @@ begin
   end;
   ValidaChecksum(4);
   FNota := 'El bloqueo/desbloqueo aplica a TODO el dispensario (no por lado). ' +
-    'La respuesta tiene exactamente la misma estructura de 6 bytes que el TX: ' +
-    'el driver la valida por checksum pero pSerialTriggerAvail no la reinterpreta ' +
-    'mas alla (no arma una linea interna como con A1/A3/A5/A6/A9).';
+    'La respuesta tiene la misma estructura de 6 bytes que el TX, validada solo por checksum.';
 end;
 
 // ---------------------------------------------------------------------------
@@ -487,10 +474,8 @@ begin
   end;
 
   ValidaChecksum(4);
-  FNota := 'A diferencia de Bennett, en el codigo fuente de UIGASTEAM no se ' +
-    'identifico un valor "tope" especial (como el 999900 de Bennett) para ' +
-    'cancelar/reabrir el preset; la respuesta de la bomba es un eco de la ' +
-    'misma trama enviada, usado por el driver solo como confirmacion.';
+  FNota := 'A diferencia de Bennett, TEAM no tiene un valor "tope" especial ' +
+    'para cancelar el preset; la respuesta es solo un eco de confirmacion.';
 end;
 
 // ---------------------------------------------------------------------------
@@ -524,9 +509,8 @@ begin
       [p3, FormatFloat('#,##0.00', p3 / 100)]));
 
   ValidaChecksum(4);
-  FNota := 'UIGASTEAM cambia los 3 niveles de precio de un dispensario en UN ' +
-    'solo comando (no requiere un comando "U" por grado, a diferencia de ' +
-    'Bennett). Aplica a todo el dispensario, no incluye campo de lado.';
+  FNota := 'Cambia los 3 niveles de precio de un dispensario en un solo ' +
+    'comando (a diferencia de Bennett); aplica a todo el dispensario, sin campo de lado.';
 end;
 
 // ---------------------------------------------------------------------------
@@ -573,10 +557,8 @@ begin
        FormatFloat('#,##0.00', totalRaw / 100)]));
 
   ValidaChecksum(4);
-  FNota := 'La cantidad y el layout exacto de los 6 bytes del total no tienen ' +
-    'un ejemplo literal verificado en el codigo fuente (a diferencia del A3 de ' +
-    'estatus); se infirio de "ss:=copy(lin,5,12)" y "StrToFloat(ss)/1000 o /100" ' +
-    'en ProcesaLinea (caso N). Pendiente de confirmar en campo con una captura real.';
+  FNota := 'El layout exacto de los 6 bytes del total se infirio del codigo ' +
+    'fuente (no hay un ejemplo literal como el del A3); pendiente de confirmar en campo.';
 end;
 
 // ---------------------------------------------------------------------------
@@ -597,12 +579,9 @@ begin
     Format('3 bytes BCD (6 digitos, MSB primero) = %.6d (variable CodigoTeam del INITIALIZE)',
       [ValorBCD(6, 3)]));
   ValidaChecksum(4);
-  FNota := 'ComandoW esta definido en UIGASTEAM.pas pero el "case CharCmnd of" ' +
-    'de ComandoConsola NO tiene una rama que lo invoque (codigo muerto / ' +
-    'reservado para una funcion futura). Ademas, la deteccion de fin de trama ' +
-    'para el opcode $E0 en pSerialTriggerAvail espera 6 campos, mientras que ' +
-    'ComandoW arma una trama de 10 bytes: posible inconsistencia del codigo ' +
-    'fuente original, no confirmada en campo.';
+  FNota := 'ComandoW esta definido pero ninguna rama del driver lo invoca ' +
+    '(codigo muerto/reservado). Ademas espera 6 campos en la deteccion de fin ' +
+    'de trama y arma una de 10 bytes: posible inconsistencia no confirmada en campo.';
 end;
 
 // ---------------------------------------------------------------------------

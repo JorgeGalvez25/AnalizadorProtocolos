@@ -174,8 +174,7 @@ begin
     FDireccion := 'TX: Consola I-Gas -> Wayne';
     AgregaParte(lin[1], 'Comando', 'Letra "B": solicita el estatus global');
     if Length(lin) >= 3 then
-      AgregaParte(Copy(lin, 2, 2), 'Direccion',
-        '"00" = difusion. Enviado cada ciclo del Timer1');
+      AgregaParte(Copy(lin, 2, 2), 'Direccion', '"00" = difusion (todas las posiciones)');
     Exit;
   end;
 
@@ -185,9 +184,9 @@ begin
   AgregaParte(Copy(lin, 2, 2), 'Direccion', 'Eco de "00"');
 
   ss := Copy(lin, 4, Length(lin) - 3);
-  FNota := Format('La respuesta reporta %d posiciones de carga (UN digito ' +
-    'de estatus por posicion). Con estatus 3 y carga en curso, I-Gas sigue ' +
-    'reportando 2 al Bridge hasta obtener la lectura final.', [Length(ss)]);
+  FNota := Format('La respuesta reporta %d posiciones (1 digito de estatus ' +
+    'cada una). En estatus 3 con carga en curso, I-Gas sigue reportando 2 ' +
+    'hasta obtener la lectura final.', [Length(ss)]);
   for xpos := 1 to Length(ss) do
     AgregaParte(ss[xpos], Format('Posicion %.2d', [xpos]),
       Format('Estatus %s: %s', [ss[xpos], DescEstatus(ss[xpos])]));
@@ -226,12 +225,9 @@ begin
   pre := Copy(lin, 22, 5);
   AgregaParte(pre, 'Precio',
     'Digitos [22..26] / 1000 = $' + DigitosAValor(pre, 1000, 2) + ' /L');
-  FNota := 'Offsets con la variable DigitosImporteA=0 (por defecto): ' +
-    'importe en [14+n..] y precio en [22+n..26] rellenado con ceros. ' +
-    'El driver corrige el importe: si 2*vol*precio<importe lo divide entre ' +
-    '10; si importe<vol*precio*0.9 recalcula importe=vol*precio; si no, ' +
-    'reconcilia el volumen = importe/precio. AjusteWayne/2/3 y ' +
-    'WayneAjusteImporte modifican esta logica.';
+  FNota := 'Con DigitosImporteA=0 (por defecto): importe en [14+n..] y ' +
+    'precio en [22+n..26]. El driver corrige el importe si no cuadra con ' +
+    'vol*precio (divide entre 10 o recalcula, segun el caso).';
 end;
 
 procedure TAnalizadorWayneCns.InterpretaC(const lin: string);
@@ -283,8 +279,7 @@ begin
     FTipo      := 'NAK (15h) - Rechazo';
     FDireccion := 'RX: Wayne -> Consola I-Gas';
     AgregaParte('<NAK>', 'Control',
-      'Rechazo del comando anterior. OJO: I-Gas tambien convierte en NAK ' +
-      'las tramas recibidas con BCC invalido');
+      'Rechazo del comando anterior (tambien ocurre si el BCC es invalido)');
     Exit;
   end;
 
@@ -300,14 +295,12 @@ begin
                FDireccion := 'TX/RX (mismo formato en ambos sentidos)';
                AgregaParte(lin, 'Enlace',
                  '"l1": I-Gas lo envia al iniciar; la respuesta "l1" ' +
-                 'habilita el Timer del ciclo. Otro valor = error de ' +
-                 'comunicacion con la consola');
+                 'habilita el Timer del ciclo');
              end
              else begin
                FDireccion := 'RX: Wayne -> Consola I-Gas';
                AgregaParte(lin, 'Enlace',
-                 'Valor distinto de "l1": el driver lanza "Error en ' +
-                 'comunicacion con CONSOLA"');
+                 'Valor distinto de "l1": error de comunicacion con la consola');
              end;
            end;
          end;
@@ -438,18 +431,14 @@ begin
     'E': begin
            FTipo      := 'E - STOP / DESAUTORIZAR';
            FDireccion := 'TX: Consola I-Gas -> Wayne';
-           AgregaParte('E', 'Comando',
-             'Detiene el despacho / quita autorizacion. Tambien lo envia ' +
-             'I-Gas al pasar de Cargando a Autorizada inesperadamente');
+           AgregaParte('E', 'Comando', 'Detiene el despacho / quita autorizacion');
            AgregaParte(Copy(lin, 2, 2), 'Posicion', 'Posicion de carga, 2 digitos');
          end;
 
     'G': begin
            FTipo      := 'G - REANUDAR despacho';
            FDireccion := 'TX: Consola I-Gas -> Wayne';
-           AgregaParte('G', 'Comando',
-             'Reanuda una posicion detenida (estatus 8). Tras varios ' +
-             'reintentos I-Gas cambia a R..');
+           AgregaParte('G', 'Comando', 'Reanuda una posicion detenida (estatus 8)');
            AgregaParte(Copy(lin, 2, 2), 'Posicion', 'Posicion de carga, 2 digitos');
          end;
 
