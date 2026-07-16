@@ -45,6 +45,13 @@ type
     procedure PonValidacion(const ATexto: string; AOk: Boolean);
   public
     function  Nombre: string; virtual; abstract;
+    function  EsHexPuro: Boolean; virtual;
+      // True = protocolo binario donde CUALQUIER texto de solo digitos hex
+      // (par, sin separadores) es inequivocamente una trama en hex (Wayne 2W,
+      // Gilbarco, HongYang, Team). False (por defecto) = protocolo ASCII o
+      // mixto (Bennett/PAM/Wayne Consola) donde un texto "todo hex" puede ser
+      // en realidad un comando ASCII valido (p.ej. "a101020500" en Wayne
+      // Consola, "D06222" en PAM); ahi NO se debe auto-espaciar a ciegas.
     procedure CargaEjemplos(sl: TStrings); virtual; abstract;
     procedure CargaContextos(sl: TStrings); virtual;   // vacio = sin combo
     procedure Analiza(const AEntrada: string; AContexto: Integer);
@@ -98,6 +105,11 @@ end;
 procedure TAnalizadorBase.CargaContextos(sl: TStrings);
 begin
   // por defecto sin contextos (el combo se oculta)
+end;
+
+function TAnalizadorBase.EsHexPuro: Boolean;
+begin
+  Result := False;   // por defecto: protocolo ASCII o mixto (no auto-espaciar)
 end;
 
 procedure TAnalizadorBase.Render(re: TRichEdit);

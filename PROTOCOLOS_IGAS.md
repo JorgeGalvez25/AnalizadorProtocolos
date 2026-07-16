@@ -352,8 +352,8 @@ descarta.
 |---|---|---|
 | `l1` | — | Confirma el enlace; otro valor = "Error en comunicación con CONSOLA" |
 | `B00` + dígitos | UN dígito de estatus por posición desde [4] | |
-| `A` | [2..3]=pos, [4]=grado activo, [6..13]=volumen, [14+n..21+n]=importe, [22+n..26]=precio | n = `DigitosImporteA` (def. 0). vol÷1000, importe÷1000, precio÷1000 |
-| `C` | [2..3]=pos, [4]=producto, [6..14]=total | ÷100 (÷10 con `WayneFusion=Si` y `TDigvol=1`) |
+| `A` | [2..3]=pos, [4]=grado activo, **[5]=no leído por el driver (hipótesis: nivel de precio, sin confirmar)**, [6..13]=volumen, [14+n..21+n]=importe, [22+n..26]=precio | n = `DigitosImporteA` (def. 0). vol÷1000, importe÷1000, precio÷1000 |
+| `C` | [2..3]=pos, [4]=producto, **[5]=no leído por el driver (hipótesis: eco del "0" fijo del TX, sin confirmar)**, [6..14]=total | ÷100 (÷10 con `WayneFusion=Si` y `TDigvol=1`) |
 | ACK/NAK | un byte | NAK también resulta de BCC inválido en RX |
 
 **Estatus Wayne consola:** `0`=sin comunicación, `1`=inactivo, `2`=cargando,
@@ -495,7 +495,7 @@ E0 E5 E2 E1 E0 E0                          RX $6p 6 díg: $12.50 en proceso
 | `UProtoPam.pas` | `TAnalizadorPam` (**PAM 1000**): misma normalización ASCII que Bennett pero con **BCC XOR**; interpreta B/A/C/T/D/L/G/E/S/R/X/P/`@02`/`@10` y las respuestas de venta (cargando `0` / concluida / no mapeada `\`), totales v1 (`C`) y v3 (`@`); sin combo de contexto |
 | `UProtoWayneCns.pas` | `TAnalizadorWayneCns` (**Wayne Consola**): mismo empaque XOR; interpreta B/A/C/l/N/h/k/g/a/S/P/E/G/R distinguiendo TX de RX por longitud; sin combo de contexto |
 | `UProtoGilbarco.pas` | `TAnalizadorGilbarco` (**Gilbarco 2W**): entrada solo hexadecimal; interpreta el byte de comando suelto, el byte de comando + data block `FF..F0` (validando DL, LRC y EOT con los algoritmos reales) y decodifica las palabras de control F1..FB con BCD LSB-primero; **combo de contexto de 9 opciones** para las respuestas ($0p, $2p, $4p/$5p/$6p en 6 u 8 dígitos) |
-| `UPrincipal.pas/.dfm` | Formulario con un `TPageControl`; **las pestañas y sus controles se crean en runtime** a partir de los analizadores registrados. La pestaña toma su Caption de `Analizador.Nombre` |
+| `UPrincipal.pas/.dfm` | Formulario con un `TPageControl`; **las pestañas y sus controles se crean en runtime** a partir de los analizadores registrados. La pestaña toma su Caption de `Analizador.Nombre`. El combo de comando es `TComboComando` (descendiente de `TComboBox`): si `Analizador.EsHexPuro=True` (Wayne 2W, Gilbarco, HongYang, Team), al **pegar** (`WM_PASTE`) o al presionar Analizar, un hex continuo sin espacios (`0106010F0000E9`) se reformatea a pares (`01 06 01 0F 00 00 E9`) vía `FormateaHexContinuo`. En protocolos ASCII/mixtos (Bennett/PAM/Wayne Consola) no se autoespacia, porque ahí un texto "todo hex" puede ser un comando ASCII real (`a101020500`, `D06222`) |
 
 ### 7.2 Contrato de la clase base
 
@@ -570,9 +570,19 @@ no indica a qué comando responde.
 - [ ] Confirmar en campo el layout de los bytes D1..D4 de las respuestas Wayne 2W
       (I-Gas solo lee los campos documentados; el resto se muestra como
       "no interpretado").
-- [ ] Confirmar en campo los caracteres no leídos de PAM ([5..13] al cargar,
-      [5] en la lectura final, [19..36] entre productos de los totales v3) y
-      de Wayne Consola ([5] de `A`/`C`); hoy se etiquetan "No leído".
+- [x] El analizador ya no etiqueta los bytes que el driver no lee como un
+      simple "No leído": cada uno trae ahora una hipótesis razonada (por
+      posición, por analogía con otro comando de la misma marca, o por el
+      valor fijo del TX que originó la respuesta), marcada explícitamente
+      como **sin confirmar**. Aplica a PAM ([5..13] al cargar, [5] en la
+      lectura final, [7] y huecos entre productos en `@10` v3), Wayne Consola
+      ([5] de `A`/`C`), Wayne 2W (byte 1 y bytes 2-4 de estatus) y Gilbarco
+      (tag no reconocido y bytes finales de la trama).
+- [ ] Confirmar en campo (o con documentación del fabricante) el significado
+      real de todos los campos anteriores; las hipótesis del punto anterior
+      son solo la mejor conjetura a partir del código y los ejemplos, no un
+      hecho verificado. Si se confirma o descarta alguna, actualizar tanto el
+      analizador (`UProtoXxx.pas`) como este documento.
 - [ ] Confirmar en campo el encabezado real de las respuestas Gilbarco `$4p`
       y `$5p` (I-Gas localiza las palabras de control por búsqueda, así que el
       analizador tolera cualquier relleno, pero el layout exacto del

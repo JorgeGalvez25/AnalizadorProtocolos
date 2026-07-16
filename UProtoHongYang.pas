@@ -112,6 +112,7 @@ type
     procedure InterpretaRX_N;      // 21 bytes
   public
     function  Nombre: string; override;
+    function  EsHexPuro: Boolean; override;
     procedure CargaEjemplos(sl: TStrings); override;
     procedure CargaContextos(sl: TStrings); override;
     procedure Analiza(const AEntrada: string; AContexto: Integer); override;
@@ -128,6 +129,11 @@ const
   cmndU = $00;  // Cambio de precio
   cmndS = $09;  // Preset importe
   cmndL = $0B;  // Preset litros
+
+function TAnalizadorHongYang.EsHexPuro: Boolean;
+begin
+  Result := True;   // protocolo binario: todo el texto es hex, sin ambiguedad con ASCII
+end;
 
 function TAnalizadorHongYang.Nombre: string;
 begin

@@ -23,9 +23,24 @@ uses
   UProtoGilbarco, UProtoTeam, UProtoHongYang;
 
 type
+  { TComboComando: combo del comando capturado. Si el protocolo de la
+    pestana es binario/hex puro (EsHexPuro=True), al PEGAR texto se
+    autoinserta un espacio cada 2 caracteres cuando lo pegado es hex
+    continuo sin separadores (p.ej. "0106010F0000E9" -> "01 06 01 0F 00 00
+    E9"), para que la trama quede correctamente delimitada en bytes. En
+    protocolos ASCII/mixtos (Bennett/PAM/Wayne Consola) no se toca nada,
+    porque un texto "todo hex" ahi puede ser en realidad un comando ASCII
+    valido (ver FormateaHexContinuo). }
+  TComboComando = class(TComboBox)
+  public
+    EsHexPuro: Boolean;
+  protected
+    procedure WndProc(var Message: TMessage); override;
+  end;
+
   TTabProtocolo = record
     Analizador: TAnalizadorBase;
-    cboComando: TComboBox;
+    cboComando: TComboComando;
     cboContexto: TComboBox;   // nil si el protocolo no define contextos
     reSalida  : TRichEdit;
   end;
@@ -43,6 +58,14 @@ type
   public
   end;
 
+// Si `s` es una cadena hexadecimal continua (solo digitos 0-9/A-F/a-f, sin
+// espacios ni comas, longitud par y > 2), regresa la misma cadena con un
+// espacio cada 2 caracteres para delimitar los bytes. Si `s` ya trae
+// separadores, tiene longitud impar, o contiene algun caracter no-hex
+// (como pasa con los comandos ASCII de Bennett/PAM/Wayne Consola, p.ej.
+// "a101020500" o "D06222"), la regresa sin tocar.
+function FormateaHexContinuo(const s: string): string;
+
 var
   frmPrincipal: TfrmPrincipal;
 
@@ -50,13 +73,44 @@ implementation
 
 {$R *.dfm}
 
+function FormateaHexContinuo(const s: string): string;
+var
+  aux, tok: string;
+  i: Integer;
+begin
+  Result := s;
+  aux := Trim(s);
+  if (Length(aux) <= 2) or (Length(aux) mod 2 <> 0) then Exit;
+  if Pos(' ', aux) > 0 then Exit;
+  for i := 1 to Length(aux) do
+    if not (aux[i] in ['0'..'9', 'A'..'F', 'a'..'f']) then Exit;
+
+  tok := '';
+  for i := 1 to Length(aux) do begin
+    tok := tok + aux[i];
+    if (i mod 2 = 0) and (i < Length(aux)) then
+      tok := tok + ' ';
+  end;
+  Result := tok;
+end;
+
+{ TComboComando }
+
+procedure TComboComando.WndProc(var Message: TMessage);
+begin
+  inherited WndProc(Message);
+  if EsHexPuro and (Message.Msg = WM_PASTE) then
+    Text := FormateaHexContinuo(Text);
+end;
+
 procedure TfrmPrincipal.RegistraAnalizador(a: TAnalizadorBase);
 var
   idx: Integer;
   tab: TTabSheet;
   pnl: TPanel;
   lbl, lblCtx: TLabel;
-  cbo, cboCtx: TComboBox;
+  cbo: TComboComando;
+  cboCtx: TComboBox;
   btn: TButton;
   re: TRichEdit;
   ctx: TStringList;
@@ -80,7 +134,7 @@ begin
   lbl.Left := 12; lbl.Top := 8;
   lbl.Caption := 'Comando capturado con el espia de puerto:';
 
-  cbo := TComboBox.Create(pnl);
+  cbo := TComboComando.Create(pnl);
   cbo.Parent := pnl;
   cbo.Left := 12; cbo.Top := 26;
   cbo.Width := 660;
@@ -88,8 +142,9 @@ begin
   cbo.Font.Size := 9;
   cbo.Anchors := [akLeft, akTop, akRight];
   cbo.Tag := idx;
+  cbo.EsHexPuro := a.EsHexPuro;
   cbo.OnKeyPress := cboComandoKeyPress;
-  a.CargaEjemplos(cbo.Items);
+//  a.CargaEjemplos(cbo.Items);
   if cbo.Items.Count > 0 then
     cbo.Text := cbo.Items[0];
   FTabs[idx].cboComando := cbo;
@@ -149,6 +204,10 @@ begin
       ctx := cboContexto.ItemIndex
     else
       ctx := 0;
+    // Respaldo del auto-espaciado de WM_PASTE: cubre texto que llego al
+    // combo sin pasar por pegar (arrastrado, autocompletado, etc.)
+    if Analizador.EsHexPuro then
+      cboComando.Text := FormateaHexContinuo(cboComando.Text);
     Analizador.Analiza(cboComando.Text, ctx);
     Analizador.Render(reSalida);
     if (Trim(cboComando.Text) <> '') and

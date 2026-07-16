@@ -51,12 +51,18 @@ type
     procedure DecodificaEstatus(bSt: Byte);
   public
     function  Nombre: string; override;
+    function  EsHexPuro: Boolean; override;
     procedure CargaEjemplos(sl: TStrings); override;
     procedure CargaContextos(sl: TStrings); override;
     procedure Analiza(const AEntrada: string; AContexto: Integer); override;
   end;
 
 implementation
+
+function TAnalizadorWayne2W.EsHexPuro: Boolean;
+begin
+  Result := True;   // protocolo binario: todo el texto es hex, sin ambiguedad con ASCII
+end;
 
 function TAnalizadorWayne2W.Nombre: string;
 begin

@@ -78,6 +78,7 @@ type
     procedure InterpretaE0;
   public
     function  Nombre: string; override;
+    function  EsHexPuro: Boolean; override;
     procedure CargaEjemplos(sl: TStrings); override;
     procedure Analiza(const AEntrada: string; AContexto: Integer); override;
   end;
@@ -92,6 +93,11 @@ const
   opPRECIOS  = $A6;
   opTOTALES  = $A9;
   opCODIGO   = $E0;
+
+function TAnalizadorTeam.EsHexPuro: Boolean;
+begin
+  Result := True;   // protocolo binario: todo el texto es hex, sin ambiguedad con ASCII
+end;
 
 function TAnalizadorTeam.Nombre: string;
 begin

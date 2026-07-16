@@ -68,12 +68,18 @@ type
     procedure ValidaLRCyEOT(desde: Integer);
   public
     function  Nombre: string; override;
+    function  EsHexPuro: Boolean; override;
     procedure CargaEjemplos(sl: TStrings); override;
     procedure CargaContextos(sl: TStrings); override;
     procedure Analiza(const AEntrada: string; AContexto: Integer); override;
   end;
 
 implementation
+
+function TAnalizadorGilbarco.EsHexPuro: Boolean;
+begin
+  Result := True;   // protocolo binario: todo el texto es hex, sin ambiguedad con ASCII
+end;
 
 function TAnalizadorGilbarco.Nombre: string;
 begin
@@ -375,8 +381,13 @@ begin
              Inc(i);
            end;
     else
-      AgregaParte(Hx(FBytes[i]), 'Dato',
-        'Caracter no interpretado por UIGASGILBARCO');
+      AgregaParte(Hx(FBytes[i]), 'Dato (tag no reconocido, sin confirmar)',
+        Format('Byte $%s no coincide con ninguno de los tags F6/F7/F8/FB ' +
+          'que interpreta UIGASGILBARCO. Puede ser un tag valido del ' +
+          'protocolo Gilbarco que el driver simplemente ignora (p.ej. otro ' +
+          'campo del bloque $4p/$5p), o un digito BCD suelto de un campo ' +
+          'contiguo mal delimitado. No confirmado en campo.',
+          [IntToHex(FBytes[i], 2)]));
       Inc(i);
     end;
   end;
@@ -531,8 +542,11 @@ begin
   end;
 
   if base <= High(FBytes) - 2 then
-    AgregaParte(HxRango(base, High(FBytes) - 2), 'Resto',
-      'Bytes no interpretados');
+    AgregaParte(HxRango(base, High(FBytes) - 2), 'Resto (sin confirmar)',
+      Format('%d byte(s) finales de la trama, mas cortos que un bloque de ' +
+        'registro completo (%d bytes) por lo que el driver no los recorre. ' +
+        'Podrian ser un registro parcial/adicional o relleno de la trama; ' +
+        'no confirmado en campo.', [High(FBytes) - 2 - base + 1, tam]));
   if High(FBytes) >= 2 then begin
     AgregaParte(Hx(FBytes[High(FBytes) - 1]), 'LRC', 'Verificado con ValidaLRC');
     AgregaParte(Hx(FBytes[High(FBytes)]), 'EOT', 'Debe ser F0');
